@@ -6,7 +6,7 @@ Le Fay S.S., Johnson D.H., Caughling T.T., Belthoff J.R., Conway C.J., Cruz J. 2
 
 Purpose: Evaluating the drivers of nest productivity in a recovering population of Western Burrowing Owls in artificial burrows at the former Umatilla Army Depot, Oregon, USA.
 
-Code includes: JAGs code for the nest productivity model. The JAG script contains priors for variable selection, likelihood calculations for observed and predicted data, and derived model parameters. Model fit and evaluation calculations (Bayesian p value and MAE) for the nest productivity model and visualizations of results.
+Code includes: JAGs code for the nest productivity model. The JAG script contains priors for variable selection, likelihood calculations for observed and predicted data, and derived model parameters. Model fit and evaluation calculations (Bayesian R² and MAE) for the nest productivity model and visualizations of results.
 
 Detailed model descriptions and formulas for model fit and evaluation approaches are described in detail in the manuscript.
 
