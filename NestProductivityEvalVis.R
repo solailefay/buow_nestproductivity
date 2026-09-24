@@ -34,39 +34,6 @@ zm <- zip.fullab
 ####################     model evaluation  ####################################
 ###############################################################################
 
-# Pull observed and predicted values
-y_obs  <- win.data$y_obs
-y_hatz  <- zm$sims.list$y_hat
-
-# calculate posterior mean prediction per observation
-y_pred_meanz <- colMeans(y_hatz)
-
-# combine into df
-evalplotdfz <- data.frame(
-  observed = y_obs,
-  predicted = y_pred_meanz,
-  year = moddf$year,
-  site = moddf$site
-)
-
-# Plot observed vs mean predicted 
-zeval <- ggplot(evalplotdfz, aes(x = observed, y = predicted, color = factor(year))) +
-  geom_jitter(width = 0.2, height = 0.05, size = 2, alpha = 0.3) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-  scale_x_continuous(breaks = 0:max(evalplotdfz$observed)) +
-  scale_y_continuous(
-    limits = c(0, 12),
-    breaks = 0:12
-  ) +
-  theme_classic(base_size = 12) +
-  labs(
-    x = "Observed chick count",
-    y = "Predicted mean chick count",
-    color = "Year",
-    title = "ZIP Full Productivity Model: Observed vs Predicted"
-  )
-
-
 #####################    trace plots    #############################
 par( mfrow = c( 2, 2 ), ask = F, mar = c(3,4,2,2) )
 
@@ -115,6 +82,40 @@ data.frame(
   Q2.5     = quantile(r2_draws, 0.025),
   Q97.5    = quantile(r2_draws, 0.975)
 )
+
+
+### Pull and visualize observed and predicted values
+y_obs  <- win.data$y_obs
+y_hatz  <- zm$sims.list$y_hat
+
+# calculate posterior mean prediction per observation
+y_pred_meanz <- colMeans(y_hatz)
+
+# combine into df
+evalplotdfz <- data.frame(
+  observed = y_obs,
+  predicted = y_pred_meanz,
+  year = moddf$year,
+  site = moddf$site
+)
+
+# Plot observed vs mean predicted 
+zeval <- ggplot(evalplotdfz, aes(x = observed, y = predicted, color = factor(year))) +
+  geom_jitter(width = 0.2, height = 0.05, size = 2, alpha = 0.3) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  scale_x_continuous(breaks = 0:max(evalplotdfz$observed)) +
+  scale_y_continuous(
+    limits = c(0, 12),
+    breaks = 0:12
+  ) +
+  theme_classic(base_size = 12) +
+  labs(
+    x = "Observed chick count",
+    y = "Predicted mean chick count",
+    color = "Year",
+    title = "ZIP Full Productivity Model: Observed vs Predicted"
+  )
+zeval
 
 ######### end model evaluation ######################################
 
@@ -173,9 +174,10 @@ prob_direction <- function( samples ) {
 
 ##Coefficients
 pd_beta <- apply( zm$sims.list$beta, 2, prob_direction )
-
+pd_beta
 
 ########################   Posterior plot   ####################################
+# Manuscript Figure 3
 #To plot our model coefficient distributions 
 #start with extracting relevant fixed effects from model
 beta.matz <- zm$sims.list$beta
@@ -212,7 +214,8 @@ baseline_df <- beta_long %>%
   group_by(parameter) %>%
   summarise(lo = min(value), hi = max(value))
 
-#plot - FULL model
+# Figure 3:
+#plot
 posteriordistplot <- ggplot( beta_long, aes( x =parameter, y = value, fill = parameter )) +
   stat_halfeye(
     trim = FALSE,
@@ -266,12 +269,15 @@ posteriordistplot <- ggplot( beta_long, aes( x =parameter, y = value, fill = par
   annotate( "text", x = 2.13, y = 0.35, label = "95.84%", color = "black", size = 2.5 ) + # female
   annotate( "text", x = 1.13, y = 0.5, label = "52.70%", color = "black", size = 2.5)  # temp
 
+posteriordistplot
+
 ###############################################################################
 ###################      PARTIAL PREDICTIONS PLOTS      #######################
 ###############################################################################
+# Manuscript Figure 4
 # Estimate partial prediction plots (marginal effect plots) for predictors 
-# with 95% CIs not overlapping zero: delta, annual, perennial, male
-# predictors that are close (85% CI): delta2, female
+# with 95% CIs not overlapping zero: density, annual, perennial, male, female
+# predictors with 85% CI not overlapping zero: density2
 
 # Start by creating our datasets to predict over
 # how many values do we use:
@@ -283,8 +289,8 @@ int <- rep( 1, n )
 colnames(X)
 
 #convert biomass predictors from lbs/acre to metric (kg/ha)
-moddf$perennial_bio_metric <- moddf$perennial_bio * 1.12085
-moddf$annual_bio_metric <- moddf$annual_bio * 1.12085
+moddf$perennial_bio_metric <- moddf$perennial * 1.12085
+moddf$annual_bio_metric <- moddf$annual * 1.12085
 
 ##### PERENNIAL ---------------------------------------
 # Use the observed values to define range of predictor:
@@ -329,6 +335,7 @@ p_peren <- ggplot(perendf, aes(x = peren, y = Mean)) +
   )+
   annotate( "text", x = 695, y = 7.5, label = "A", color = "black", size = 4) 
 
+p_peren
 
 ##### ANNUAL ---------------------------------------
 # Use the observed values to define range of predictor:
@@ -377,36 +384,38 @@ p_annual <- ggplot(annualdf, aes(x = annual, y = Mean)) +
   )+
   annotate( "text", x = 1233, y = 7.5, label = "B", color = "black", size = 4)
 
+p_annual
 
-##### DELTA (QUADRATIC) ---------------------------------------
+##### DENSITY (QUADRATIC) ---------------------------------------
+# Conspecific neighbor density
 # Use the observed values to define range of predictor:
-delta <- seq( min( moddf[,"delta"]),max( moddf[,"delta"]),
+density <- seq( min( moddf[,"density"]),max( moddf[,"density"]),
                length.out = n )
 #standardize predictors:
-delta.std <- scale2sd( delta )
-delta2.std <- scale2sd( delta^2 )
+density.std <- scale2sd( density )
+density2.std <- scale2sd( density^2 )
 
 #extract relevant fixed coefficient from model results
-fixeddelta <- cbind( zm$sims.list$int.lam, zm$sims.list$beta[,1] ,zm$sims.list$beta[,2])
+fixeddensity <- cbind( zm$sims.list$int.lam, zm$sims.list$beta[,1] ,zm$sims.list$beta[,2])
 
 #estimate predicted productivity
-preddelta <- exp( fixeddelta %*% t( cbind( int, delta.std, delta2.std) ) )
+preddensity <- exp( fixeddensity %*% t( cbind( int, density.std, density2.std) ) )
 #calculate mean productivity
-mdelta <- apply( preddelta, MARGIN = 2, FUN = mean )
+mdensity <- apply( preddensity, MARGIN = 2, FUN = mean )
 #calculate 95% credible intervals 
-CIdelta <- apply( preddelta, MARGIN = 2, FUN = quantile, 
+CIdensity <- apply( preddensity, MARGIN = 2, FUN = quantile, 
                    probs = c(0.025, 0.975) )
 
 #create dataframe combining all predicted values for plotting
-deltadf <- data.frame( mdelta, t(CIdelta),
-                        delta.std, delta )
+densitydf <- data.frame( mdensity, t(CIdensity),
+                        density.std, density )
 #view
-head( deltadf); dim( deltadf)
+head( densitydf); dim( densitydf)
 #rename columns
-colnames(deltadf )[1:3] <- c(  "Mean", "lowCI", "highCI" )
+colnames(densitydf )[1:3] <- c(  "Mean", "lowCI", "highCI" )
 
 #plot marginalized effects 
-p_delta <- ggplot(deltadf, aes(x = delta, y = Mean)) +
+p_density <- ggplot(densitydf, aes(x = density, y = Mean)) +
   ylab(NULL) +
   xlab("Neighbor density") +
   geom_ribbon(aes(ymin = lowCI, ymax = highCI), alpha = 0.3, fill = "#7B9E87") +
@@ -424,12 +433,15 @@ p_delta <- ggplot(deltadf, aes(x = delta, y = Mean)) +
   ) +
   annotate("text", x = 58, y = 7.5, label = "C", color = "black", size = 4)
 
+p_density
 
+#### Figure 4
 #### combine into panel
-margeff_panel <-  p_peren + p_annual + p_delta
+margeff_panel <-  p_peren + p_annual + p_density
 
 
 ##### AGE (MALE & FEMALE) ---------------------------------------
+##### Figure 5
 male <- c(-1, -0.25, 0, 0.25, 1)
 female <- c(-1, -0.25, 0, 0.25, 1)
 ageint <- rep( 1, 5 )
@@ -477,6 +489,7 @@ agedf <- rbind(maledf, femaledf)
 agedf$Age <- factor(agedf$Age,
                     levels = c("SY", "AHY", "TY", "ASY", "ATY"))
 
+# Figure 5
 # Plot both sexes together
 margeff_sex <- ggplot(agedf, aes(x = Age, y = Mean, color = sex)) +
   # Points
@@ -516,9 +529,8 @@ margeff_sex <- ggplot(agedf, aes(x = Age, y = Mean, color = sex)) +
     axis.title.y = element_text(margin = margin(r = 6))
   )
 
+margeff_sex
 
 ##########      end of marginal effect plots      ##############################
 ################################################################################
-##########      save relevant figures or data     ##############################
-##########      save workspace image              ##############################
 ##########      end of script                     ##############################

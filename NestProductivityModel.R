@@ -5,10 +5,10 @@
 #########         to fit a productivity model for BUOW          #######
 ######### 
 ##
-## This script was adapted by Solai from script written by Dr. Jen Cruz 
+## This script was adapted by Solai Le Fay from script written by Dr. Jen Cruz 
 ##                                                                    
 ## Here we import our cleaned data, containing each nest attempt 
-## with a count of chicks survived to near-fledging, and all ecological
+## with a count of chicks survived to banding, and all ecological
 ## predictors: annual and perennial biomass, shrub % cover,
 ## distance to agriculture, hot days, male and female age
 ## with random effects of year and siteID
@@ -39,7 +39,7 @@ datapathclean <- "Z:Common/BurrowingOwls/CleanData/"
 
 
 # load unscaled model predictor df 
-moddf <- read.csv( file = paste( datapathclean, "prodmoddf_ab.csv", sep = ""),
+moddf <- read.csv( file = paste( datapathclean, "prodmoddf.csv", sep = ""),
                    header = TRUE )
 #581 nest attempts
 
@@ -54,7 +54,6 @@ head( moddf ); dim( moddf )
 # extract broad parameters of interest
 #number of nest attempts:
 I <- length( moddf$nestID )
-# No detection model/repeated observations to loop through
 
 # create index for chick count observations - response
 yid <- grep( "count", colnames( moddf ), value = FALSE)
@@ -68,12 +67,12 @@ scale2sd <- function(x){
 }
 
 ## add quadratic term for delta before scaling
-moddf$delta2 <- (moddf$delta)^2
+moddf$density2 <- (moddf$density)^2
 
-# scale and rename predictors
+# scale predictors
 XI <- moddf %>%
-  dplyr::select(delta, delta2, edge = dist_to_edge_meters, shrub, peren = perennial_bio,
-                annual = annual_bio, male = age_male_5C, female = age_female_5C, temp = tnz_high) %>%
+  dplyr::select(density, density2, dist, shrub, perennial,
+                annual, male, female, temp) %>%
   dplyr::mutate(dplyr::across(where(is.numeric), scale2sd))
 
 
@@ -112,13 +111,13 @@ head(X)
 moddf$year <- as.numeric( as.factor(moddf$year ))
 
 #number of years
-J <- length(unique(moddf$year)) 
+K <- length(unique(moddf$year)) 
 
 # Site ID random intercept
-moddf_sub$site <- as.numeric( as.factor(moddf_sub$siteID ))
+moddf$site <- as.numeric( as.factor(moddf$siteID ))
 
 #number of sites
-S <- length(unique(moddf_sub$site)) #93
+J <- length(unique(moddf$site)) #93
 
 
 #-------------------------------------------------------------------------
@@ -126,10 +125,10 @@ S <- length(unique(moddf_sub$site)) #93
 ####### Zero inflated poisson - nest productivity model
 ### Year and siteID are random intercepts
 ### Fixed effects include weather, vegetation, and social factors:
-#- Weather: tnz_high (number of days that season where max temp was above the max thermoneutral zone)
+#- Weather: temp (number of days that season where max temp was above the max thermoneutral zone)
 #- Vegetation:
-# perennial_bio, annual_bio, shrub (perennial and annual mean biomass within 1400m radius of burrow, % shrub cover)
-# dist_to_edge_meters (nearest distance of nest to agriculture in meters)
+# perennial, annual, shrub (perennial and annual mean biomass (lbs/acre) within 1400m radius of burrow, % shrub cover)
+# dist (nearest distance of nest to agriculture in meters)
 #- Social: neighbor density (delta), male age, female age
 # --- Delta as quadratic, male and female age as categorical factors with 5 levels each
 ############################################################################
@@ -140,23 +139,21 @@ cat( "
      
       ### PRIORS
       #random intercept for year
+      for( k in 1:K ){
+        eps.k[k] ~ dnorm( 0, pres.k ) T(-7, 7)
+      }
+      #associated variance of random intercept:     
+      pres.k <- 1/ ( sigma.k * sigma.k )
+      #sigma prior specified as a student t half-normal:
+      sigma.k ~ dt( 0, 2.5, 7 ) T( 0, )
+      
+      #random intercept for site
       for( j in 1:J ){
         eps.j[j] ~ dnorm( 0, pres.j ) T(-7, 7)
       }
-      #associated variance of random intercept:     
+      #associated variance of random intercepts:     
       pres.j <- 1/ ( sigma.j * sigma.j )
       #sigma prior specified as a student t half-normal:
-      #SD can not have negative values, trunkate to make it positive
-      sigma.j ~ dt( 0, 2.5, 7 ) T( 0, )
-      
-      #random intercept for site
-      for( s in 1:S ){
-        eps.s[s] ~ dnorm( 0, pres.s ) T(-7, 7)
-      }
-      #associated variance of random intercepts:     
-      pres.s <- 1/ ( sigma.s * sigma.s )
-      #sigma prior specified as a student t half-normal:
-      #SD can not have negative values, trunkate to make it positive
       sigma.s ~ dt( 0, 2.5, 7 ) T( 0, )
   
       #priors for fixed coefficients:
@@ -176,24 +173,20 @@ cat( "
     # loop through each nest attempt i
     for( i in 1:I ){
       #latent suitability state 
-      #omega is not related to something else (only on right side of equations)
-      #so it was given a prior above
-      # Z = zero inflation, whether a nest attempt was successful (at least one chick) or failed (0 chicks)
+      # Z = zero inflation, whether a nest attempt was successful (1+ chicks) or failed (0 chicks)
       # distributed as a bernoulli conditional on omega
       z[ i ] ~ dbern( omega )
       
       # true productivity now conditional on z (nest success)
-      # z is 0 or 1, so either multiplying by 0 or just lamda 
       # observed count of chicks for each nest attempt is distributed as a poisson
-      # conditional on lambda and z (for zero inflation, nest success)
       y_obs[ i ] ~ dpois( lambda[ i ] * z[ i ] )
       
       #mean relative productivity related to ecological predictors
       log( lambda[ i ] ) <- int.lam + 
                         inprod( beta, X[ i, ]  ) +
                         #random intercepts
-                        eps.j[year[i]] 
-                        + eps.s[site[i]]
+                        eps.k[year[k]] 
+                        + eps.j[site[j]]
                         
             
         # Model evaluation
@@ -214,10 +207,10 @@ modelname <- "zip.fullab.txt"
 #parameters monitored
 params <- c(
   'int.lam' #intercept for lamda
-  #, 'sigma.j' #random intercept for year
-  #, 'sigma.s' #random intercept for site
-  , 'sigma.j' #error for random intercept for year
-  , 'sigma.s' #error for random intercept for site
+  #, 'sigma.k' #random intercept for year
+  #, 'sigma.j' #random intercept for site
+  , 'sigma.k' #error for random intercept for year
+  , 'sigma.j' #error for random intercept for site
   , 'omega' #suitability parameter
   , 'beta' #abundance coefficients
   , 'y_hat' #predicted observations
@@ -234,7 +227,7 @@ inits <- function(){ list( beta = rnorm( B ),
 #define data that will go in the model
 str( win.data <- list( y_obs = moddf[ ,yid] ,
                        #number of nest attempts, years, sites, and fixed predictors
-                       I = I, J = J, B = B, S = S,
+                       I = I, K = K, B = B, J = J,
                        #ecological predictors
                        X = X,
                        #random effects
@@ -251,4 +244,10 @@ zip.fullab <- autojags( win.data, inits = inits, params, modelname, #
                         save.all.iter = FALSE, parallel = TRUE ) 
 
 
-###### end zip.fullab model***** ########----------------------------------------
+###### end zip.fullab model***** ########---------------------------------------
+
+### Save workspace ###
+
+save.image( "ProdMod_ZIP.RData" )
+
+#### end of script  #####################---------------------------------------
